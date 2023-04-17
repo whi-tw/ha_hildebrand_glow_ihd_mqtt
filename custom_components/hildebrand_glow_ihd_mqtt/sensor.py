@@ -35,6 +35,23 @@ _LOGGER = logging.getLogger(__name__)
 # glow/XXXXXXYYYYYY/SENSOR/electricitymeter {"electricitymeter":{"timestamp":"2022-06-11T20:38:00Z","energy":{"export":{"cumulative":0.000,"units":"kWh"},"import":{"cumulative":6613.405,"day":13.252,"week":141.710,"month":293.598,"units":"kWh","mpan":"1234","supplier":"ABC ENERGY","price":{"unitrate":0.04998,"standingcharge":0.24030}}},"power":{"value":0.951,"units":"kW"}}}
 # glow/XXXXXXYYYYYY/SENSOR/gasmeter         {"gasmeter":{"timestamp":"2022-06-11T20:53:52Z","energy":{"export":{"cumulative":0.000,"units":"kWh"},"import":{"cumulative":17940.852,"day":11.128,"week":104.749,"month":217.122,"units":"kWh","mprn":"1234","supplier":"---","price":{"unitrate":0.07320,"standingcharge":0.17850}}},"power":{"value":0.000,"units":"kW"}}}
 
+TEXT_ENTITIES = {
+  "firmware_version": {
+    "mode": "text",
+    "native_max": 100,
+    "native_min": 0,
+    "pattern": r"v\d+\.\d+\.\d+", # e.g. v1.8.12,
+    "native_value": "",
+  },
+  "ihd_hardware": {
+    "mode": "text",
+    "native_max": 100,
+    "native_min": 0,
+    "pattern": None,
+    "native_value": "",
+  }
+}
+
 STATE_SENSORS = [
   {
     "name": "Smart Meter IHD Software Version",
