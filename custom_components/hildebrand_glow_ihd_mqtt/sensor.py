@@ -4,18 +4,19 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Iterable
+from typing import Any, Iterable, Mapping
 
 from homeassistant.components import mqtt
 from homeassistant.components.mqtt.models import ReceiveMessage
 from homeassistant.components.sensor import (SensorDeviceClass, SensorEntity,
                                              SensorStateClass)
+from homeassistant.components.text import TextEntity
 from homeassistant.const import (ATTR_DEVICE_ID, CONF_DEVICE_ID,
                                  ENERGY_KILO_WATT_HOUR, PERCENTAGE,
                                  POWER_KILO_WATT, SIGNAL_STRENGTH_DECIBELS,
                                  VOLUME_CUBIC_METERS)
 from homeassistant.core import callback
-from homeassistant.helpers.entity import DeviceInfo, EntityCategory
+from homeassistant.helpers.entity import DeviceInfo, Entity, EntityCategory
 from homeassistant.util import slugify
 
 from .const import DOMAIN
@@ -26,42 +27,48 @@ _LOGGER = logging.getLogger(__name__)
 # glow/XXXXXXYYYYYY/SENSOR/electricitymeter {"electricitymeter":{"timestamp":"2022-06-11T20:38:00Z","energy":{"export":{"cumulative":0.000,"units":"kWh"},"import":{"cumulative":6613.405,"day":13.252,"week":141.710,"month":293.598,"units":"kWh","mpan":"1234","supplier":"ABC ENERGY","price":{"unitrate":0.04998,"standingcharge":0.24030}}},"power":{"value":0.951,"units":"kW"}}}
 # glow/XXXXXXYYYYYY/SENSOR/gasmeter         {"gasmeter":{"timestamp":"2022-06-11T20:53:52Z","energy":{"export":{"cumulative":0.000,"units":"kWh"},"import":{"cumulative":17940.852,"day":11.128,"week":104.749,"month":217.122,"units":"kWh","mprn":"1234","supplier":"---","price":{"unitrate":0.07320,"standingcharge":0.17850}}},"power":{"value":0.000,"units":"kW"}}}
 
-TEXT_ENTITIES = {
-  "firmware_version": {
-    "mode": "text",
-    "native_max": 100,
-    "native_min": 0,
-    "pattern": r"v\d+\.\d+\.\d+", # e.g. v1.8.12,
-    "native_value": "",
-  },
-  "ihd_hardware": {
+TEXT_ENTITIES = [
+  {
+    "name": "Smart Meter IHD Software Version",
     "mode": "text",
     "native_max": 100,
     "native_min": 0,
     "pattern": None,
-    "native_value": "",
-  }
-}
-
-STATE_SENSORS = [
-  {
-    "name": "Smart Meter IHD Software Version",
-    "device_class": None,
-    "unit_of_measurement": None,
-    "state_class": None,
     "entity_category": EntityCategory.DIAGNOSTIC,
     "icon": "mdi:new-box",
     "func": lambda js: js["software"],
   },
   {
     "name": "Smart Meter IHD Hardware",
-    "device_class": None,
-    "unit_of_measurement": None,
-    "state_class": None,
+    "mode": "text",
+    "native_max": 100,
+    "native_min": 0,
+    "pattern": None,
     "entity_category": EntityCategory.DIAGNOSTIC,
     "icon": "mdi:information-outline",
     "func": lambda js: js["hardware"],
-  },
+  }
+]
+
+STATE_SENSORS = [
+#   {
+#     "name": "Smart Meter IHD Software Version",
+#     "device_class": None,
+#     "unit_of_measurement": None,
+#     "state_class": None,
+#     "entity_category": EntityCategory.DIAGNOSTIC,
+#     "icon": "mdi:new-box",
+#     "func": lambda js: js["software"],
+#   },
+#   {
+#     "name": "Smart Meter IHD Hardware",
+#     "device_class": None,
+#     "unit_of_measurement": None,
+#     "state_class": None,
+#     "entity_category": EntityCategory.DIAGNOSTIC,
+#     "icon": "mdi:information-outline",
+#     "func": lambda js: js["hardware"],
+#   },
   {
     "name": "Smart Meter IHD HAN RSSI",
     "device_class": SensorDeviceClass.SIGNAL_STRENGTH,
@@ -314,14 +321,13 @@ async def async_get_device_groups(deviceUpdateGroups, async_add_entities, device
     return deviceUpdateGroups[device_id]
 
 
-class HildebrandGlowMqttSensorUpdateGroup:
+
+
+class HildebrandGlowMqttUpdateGroup:
     """Representation of Hildebrand Glow MQTT Meter Sensors that all get updated together."""
 
-    def __init__(self, device_id: str, topic_regex: str, meters: Iterable) -> None:
-        """Initialize the sensor collection."""
-        self._topic_regex = re.compile(topic_regex)
-        self._sensors = [HildebrandGlowMqttSensor(device_id = device_id, **meter) for meter in meters]
-
+    _topic_regex: re.Pattern
+    _sensors: Iterable[Entity]
     def process_update(self, message: ReceiveMessage) -> None:
         """Process an update from the MQTT broker."""
         topic = message.topic
@@ -337,7 +343,36 @@ class HildebrandGlowMqttSensorUpdateGroup:
         """Return all meters."""
         return self._sensors
 
-class HildebrandGlowMqttSensor(SensorEntity):
+class HildebrandGlowMqttSensorUpdateGroup(HildebrandGlowMqttUpdateGroup):
+    def __init__(self, device_id: str, topic_regex: str, meters: Iterable) -> None:
+        """Initialize the sensor collection."""
+        self._topic_regex = re.compile(topic_regex)
+        self._sensors = [HildebrandGlowMqttSensor(device_id = device_id, **meter) for meter in meters]
+
+class HildebrandGlowMqttTextEntityUpdateGroup(HildebrandGlowMqttUpdateGroup):
+    def __init__(self, device_id: str, topic_regex: str, meters: Iterable) -> None:
+        """Initialize the sensor collection."""
+        self._topic_regex = re.compile(topic_regex)
+        self._sensors = [HildebrandGlowMqttTextEntity(device_id = device_id, **meter) for meter in meters]
+
+class HildebrandGlowMqttEntity(Entity):
+    def process_update(self, mqtt_data) -> None:
+        """Update the state of the sensor."""
+        new_value = self._func(mqtt_data)
+        if (self._ignore_zero_values and new_value == 0):
+            _LOGGER.debug("Ignored new value of %s on %s.", new_value, self._attr_unique_id)
+            return
+        self._attr_native_value = new_value
+        if (self.hass is not None): # this is a hack to get around the fact that the entity is not yet initialized at first
+            self.async_schedule_update_ha_state()
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any] | None:
+        """Return the state attributes."""
+        return {ATTR_DEVICE_ID: self._device_id}
+
+
+class HildebrandGlowMqttSensor(HildebrandGlowMqttEntity, SensorEntity):
     """Representation of a room sensor that is updated via MQTT."""
 
     def __init__(self, device_id, name, icon, device_class, unit_of_measurement, state_class, func, entity_category = EntityCategory.CONFIG, ignore_zero_values = False) -> None:
@@ -362,17 +397,18 @@ class HildebrandGlowMqttSensor(SensorEntity):
         )
         self._attr_native_value = None
 
-    def process_update(self, mqtt_data) -> None:
-        """Update the state of the sensor."""
-        new_value = self._func(mqtt_data)
-        if (self._ignore_zero_values and new_value == 0):
-            _LOGGER.debug("Ignored new value of %s on %s.", new_value, self._attr_unique_id)
-            return
-        self._attr_native_value = new_value
-        if (self.hass is not None): # this is a hack to get around the fact that the entity is not yet initialized at first
-            self.async_schedule_update_ha_state()
+class HildebrandGlowMqttTextEntity(HildebrandGlowMqttEntity, TextEntity):
+    def __init__(self, device_id, name, icon, mode, native_max, native_min, pattern, func, entity_category = EntityCategory.DIAGNOSTIC) -> None:
+        self._device_id = device_id
+        self._attr_name = name
+        self._attr_unique_id = slugify(device_id + "_" + name)
+        self._attr_icon = icon
+        self._attr_mode = mode
+        self._attr_native_max = native_max
+        self._attr_native_min = native_min
+        self._attr_pattern = pattern
+        self._attr_entity_category = entity_category
+        self._attr_should_poll = False
 
-    @property
-    def extra_state_attributes(self):
-        """Return the state attributes."""
-        return {ATTR_DEVICE_ID: self._device_id}
+        self._func = func
+        self._attr_native_value = None
