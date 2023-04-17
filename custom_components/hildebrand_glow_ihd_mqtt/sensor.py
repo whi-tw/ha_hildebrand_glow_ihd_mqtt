@@ -42,7 +42,7 @@ STATE_SENSORS = [
     "unit_of_measurement": None,
     "state_class": None,
     "entity_category": EntityCategory.DIAGNOSTIC,
-    "icon": "mdi:information-outline",
+    "icon": "mdi:new-box",
     "func": lambda js: js["software"],
   },
   {
@@ -207,7 +207,7 @@ GAS_SENSORS = [
   {
     "name": "Smart Meter Gas: Import (This week)",
     "device_class": SensorDeviceClass.ENERGY,
-    "unit_of_measurement": ENERGY_KILO_WATT_HOUR, 
+    "unit_of_measurement": ENERGY_KILO_WATT_HOUR,
     "state_class": SensorStateClass.TOTAL_INCREASING,
     "icon": "mdi:fire",
     "func": lambda js : js['gasmeter']['energy']['import']['week']
@@ -284,7 +284,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
     await mqtt.async_subscribe(
         hass, data_topic, mqtt_message_received, 1
-    ) 
+    )
 
 
 
@@ -304,7 +304,7 @@ async def async_get_device_groups(deviceUpdateGroups, async_add_entities, device
         deviceUpdateGroups[device_id] = groups
 
     return deviceUpdateGroups[device_id]
-  
+
 
 class HildebrandGlowMqttSensorUpdateGroup:
     """Representation of Hildebrand Glow MQTT Meter Sensors that all get updated together."""
@@ -344,8 +344,8 @@ class HildebrandGlowMqttSensor(SensorEntity):
         self._attr_state_class = state_class
         self._attr_entity_category = entity_category
         self._attr_should_poll = False
-        
-        self._func = func        
+
+        self._func = func
         self._attr_device_info = DeviceInfo(
             connections={("mac", device_id)},
             manufacturer="Hildebrand Technology Limited",
